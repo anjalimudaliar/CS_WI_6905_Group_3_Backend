@@ -3,14 +3,16 @@ const express = require("express");
 const AWS = require("aws-sdk");
 const multer = require("multer");
 const cors = require("cors");
-
+const { promisify } = require("util");
+const FormData = require("form-data");
+const axios = require("axios");
+const fs = require("fs");
 const app = express();
 const port = process.env.PORT || 5000;
-
 // Enable CORS
 app.use(cors());
 app.use(express.json());
-
+const upload = multer({ dest: "uploads/" });
 // AWS Configuration
 const awsConfig = {
   region: process.env.AWS_REGION || "us-east-2",
@@ -27,7 +29,7 @@ const TABLE_NAME = process.env.DYNAMODB_TABLE_NAME || "MedicalRecords";
 
 // S3 for file uploads
 const s3 = new AWS.S3();
-const upload = multer({ storage: multer.memoryStorage() });
+//const upload = multer({ storage: multer.memoryStorage() });
 
 // ==========
 // Middleware to get userSub
@@ -266,33 +268,54 @@ app.get("/prescriptions", async (req, res) => {
 // ==========
 // Store X-Ray Prediction in DynamoDB
 // ==========
-app.post("/save-xray-prediction", async (req, res) => {
-  const userSub = req.user.sub; // Get Cognito user ID
-  const { prediction, fileName, timestamp } = req.body; // Expecting this from frontend
+app.post("/analyze-xray", upload.single("file"), async (req, res) => {
+  const file = req.file;
+  const userSub = req.headers["x-sub"]; // Retrieve user identifier from headers
 
-  if (!prediction || !fileName || !timestamp) {
-    return res.status(400).json({ error: "Missing required fields: prediction, fileName, timestamp" });
+  if (!file) {
+    return res.status(400).json({ error: "No file uploaded" });
   }
 
-  const recordID = `XRAY#${timestamp}`;
-
-  const params = {
-    TableName: TABLE_NAME,
-    Item: {
-      PatientID: userSub,  // Associate with the user
-      RecordID: recordID,  // Unique X-ray record ID
-      Prediction: prediction,
-      FileName: fileName,
-      Timestamp: timestamp,
-    },
-  };
-
   try {
+    // Prepare the file for forwarding
+    const formData = new FormData();
+    formData.append("file", fs.createReadStream(file.path), file.originalname);
+
+    // Forward the file to the classifier API
+    const classifierResponse = await axios.post(
+      "http://medportal-lb-1742379571.us-east-2.elb.amazonaws.com:8000/classifier/predict",
+      formData,
+      { headers: formData.getHeaders() }
+    );
+
+    const prediction = classifierResponse.data.prediction;
+    const timestamp = Date.now();
+
+    // Store the prediction result in your database
+    const recordID = `XRAY#${timestamp}`;
+    const params = {
+      TableName: TABLE_NAME,
+      Item: {
+        PatientID: userSub,
+        RecordID: recordID,
+        Prediction: prediction,
+        FileName: file.originalname,
+        Timestamp: timestamp,
+      },
+    };
+
     await dynamoDB.put(params).promise();
-    res.json({ message: "X-ray prediction saved successfully!", data: params.Item });
+
+    // Respond to the frontend with the prediction result
+    res.json({ prediction, timestamp });
+
   } catch (error) {
-    console.error("DynamoDB Put Error:", error);
-    res.status(500).json({ error: "Error saving X-ray prediction", details: error.message });
+    console.error("Error processing X-Ray:", error);
+    res.status(500).json({ error: "Failed to analyze the X-ray", details: error.message });
+  } finally {
+    // Clean up the temporary file
+    const unlinkAsync = promisify(fs.unlink);
+    await unlinkAsync(file.path);
   }
 });
 
