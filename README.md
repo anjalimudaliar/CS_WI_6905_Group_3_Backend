@@ -1,3 +1,9 @@
+Steps to test the code.
+Please get both the Backend and Front end on your machine
+
+Check if these line in front end are enabled
+const API_BASE_URL = "http://localhost:5000";
+
 CS_WI_6905_Group_3_Backend
 
 API Documentation: Medical Records Management System
