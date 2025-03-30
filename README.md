@@ -26,7 +26,7 @@ Description: Checks if the API is running.
 
 Response:
 
-{ "message": "Node.js Backend is Running! 🚀" }
+{ "message": "Node.js Backend is Running! " }
 
 2. Patient Profile Management
 
@@ -223,12 +223,3 @@ Multer: File uploads
 Axios: HTTP requests
 
 FormData: Handling file uploads
-
-Notes
-
-This API is designed for local development but can be deployed to AWS Lambda or an EC2 instance.
-
-Proper IAM roles and policies must be configured for AWS services to function correctly.
-
-Author: Anup Shastri
-Date: March 2025
