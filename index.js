@@ -749,6 +749,37 @@ app.post("/create-patient", requireDoctor, async (req, res) => {
 });
 
 
+// ====================
+// Search Patient by Username (Doctor Dashboard Search Bar)
+// ====================
+app.get("/search-patient", requireDoctor, async (req, res) => {
+  const { username } = req.query;
+
+  if (!username) {
+    return res.status(400).json({ error: "Missing 'username' query parameter" });
+  }
+
+  const params = {
+    TableName: TABLE_NAME,
+    IndexName: "Username-index", // your GSI
+    KeyConditionExpression: "Username = :username",
+    ExpressionAttributeValues: {
+      ":username": username,
+    },
+  };
+
+  try {
+    const result = await dynamoDB.query(params).promise();
+    if (!result.Items || result.Items.length === 0) {
+      return res.status(404).json({ error: "Patient not found" });
+    }
+    res.json(result.Items);
+  } catch (error) {
+    console.error("Error searching patient:", error);
+    res.status(500).json({ error: "Error searching patient", details: error.message });
+  }
+});
+
 // Start Server
 app.listen(port, () => {
   console.log(`Server running at http://localhost:${port}`);
